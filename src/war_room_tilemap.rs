@@ -16,8 +16,8 @@ impl Plugin for WarRoomPlugin {
     }
 }
 
-const ROOM_W: i32 = 28;
-const ROOM_H: i32 = 20;
+const ROOM_W: i32 = 44;
+const ROOM_H: i32 = 36;
 
 // --- Embedded tile assets ---
 
