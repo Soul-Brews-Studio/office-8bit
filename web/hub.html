@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Oracle WASM Hub</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; background: #0a0a0f; color: #cdd6f4; font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+
+    #hub { display: flex; flex-direction: column; min-height: 100vh; }
+
+    /* Header */
+    header {
+      padding: 24px 32px;
+      border-bottom: 1px solid rgba(100,181,246,0.15);
+      display: flex; align-items: center; gap: 16px;
+    }
+    header h1 { color: #64b5f6; font-size: 20px; font-weight: bold; letter-spacing: 1px; }
+    header .badge {
+      background: rgba(100,181,246,0.15);
+      color: #64b5f6;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+    }
+
+    /* App grid */
+    .app-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 20px;
+      padding: 32px;
+      flex: 1;
+    }
+
+    .app-card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 20px;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+    .app-card:hover {
+      border-color: rgba(100,181,246,0.4);
+      background: rgba(100,181,246,0.05);
+      transform: translateY(-2px);
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+    .app-card.running {
+      border-color: rgba(129,199,132,0.5);
+      box-shadow: 0 0 12px rgba(129,199,132,0.15);
+    }
+    .app-card .app-name { font-size: 16px; font-weight: bold; margin-bottom: 6px; }
+    .app-card .app-desc { font-size: 11px; color: rgba(255,255,255,0.5); margin-bottom: 12px; line-height: 1.5; }
+    .app-card .app-meta { font-size: 10px; color: rgba(255,255,255,0.3); display: flex; gap: 12px; }
+    .app-card .app-meta .tag {
+      background: rgba(255,255,255,0.06);
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+    .app-card .status-dot {
+      position: absolute;
+      top: 16px; right: 16px;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.15);
+    }
+    .app-card.running .status-dot { background: #81c784; box-shadow: 0 0 6px rgba(129,199,132,0.5); }
+
+    /* Upload card */
+    .upload-card {
+      border: 2px dashed rgba(255,255,255,0.1);
+      background: transparent;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 140px;
+      transition: all 0.2s;
+    }
+    .upload-card:hover { border-color: rgba(100,181,246,0.4); }
+    .upload-card.dragover { border-color: #64b5f6; background: rgba(100,181,246,0.08); }
+    .upload-card .icon { font-size: 28px; opacity: 0.3; }
+    .upload-card .label { font-size: 12px; color: rgba(255,255,255,0.4); }
+
+    /* App runner (fullscreen overlay) */
+    #runner {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      background: #0a0a0f;
+      z-index: 500;
+      display: none;
+    }
+    #runner.active { display: block; }
+
+    #runner-nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 40px;
+      background: rgba(10,10,15,0.95);
+      border-bottom: 1px solid rgba(100,181,246,0.15);
+      display: flex; align-items: center;
+      padding: 0 16px; gap: 12px;
+      z-index: 600;
+      backdrop-filter: blur(8px);
+    }
+    #runner-nav .back-btn {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 4px;
+      color: #cdd6f4;
+      font-family: inherit;
+      font-size: 12px;
+      padding: 4px 12px;
+      cursor: pointer;
+    }
+    #runner-nav .back-btn:hover { background: rgba(255,255,255,0.15); }
+    #runner-nav .app-title { color: #64b5f6; font-size: 13px; font-weight: bold; }
+    #runner-nav .app-info { font-size: 10px; color: rgba(255,255,255,0.4); margin-left: auto; }
+
+    #runner-frame {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+
+    /* Delete button */
+    .delete-btn {
+      position: absolute;
+      bottom: 12px; right: 12px;
+      background: rgba(243,139,168,0.1);
+      border: 1px solid rgba(243,139,168,0.2);
+      border-radius: 4px;
+      color: #f38ba8;
+      font-size: 10px;
+      padding: 2px 8px;
+      cursor: pointer;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    .app-card:hover .delete-btn { opacity: 1; }
+    .delete-btn:hover { background: rgba(243,139,168,0.2); }
+
+    /* Hidden file input */
+    #file-input { display: none; }
+  </style>
+</head>
+<body>
+  <div id="hub">
+    <header>
+      <h1>Oracle WASM Hub</h1>
+      <span class="badge" id="app-count">0 apps</span>
+    </header>
+
+    <div class="app-grid" id="app-grid">
+      <!-- Apps injected by JS -->
+    </div>
+  </div>
+
+  <div id="runner">
+    <nav id="runner-nav">
+      <button class="back-btn" id="back-btn">← Hub</button>
+      <span class="app-title" id="runner-title"></span>
+      <span class="app-info" id="runner-info"></span>
+    </nav>
+    <iframe id="runner-frame" sandbox="allow-scripts allow-same-origin"></iframe>
+  </div>
+
+  <input type="file" id="file-input" accept=".zip,.wasm" multiple />
+
+  <script type="module">
+    // --- IndexedDB for WASM app storage ---
+
+    const DB_NAME = 'oracle-wasm-hub';
+    const STORE_NAME = 'apps';
+
+    function openDB() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(DB_NAME, 1);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains(STORE_NAME)) {
+            db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function getAllApps() {
+      const db = await openDB();
+      return new Promise((resolve) => {
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const store = tx.objectStore(STORE_NAME);
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => resolve([]);
+      });
+    }
+
+    async function saveApp(app) {
+      const db = await openDB();
+      return new Promise((resolve) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        tx.objectStore(STORE_NAME).put(app);
+        tx.oncomplete = () => resolve();
+      });
+    }
+
+    async function deleteApp(id) {
+      const db = await openDB();
+      return new Promise((resolve) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        tx.objectStore(STORE_NAME).delete(id);
+        tx.oncomplete = () => resolve();
+      });
+    }
+
+    // --- Built-in apps (served from server) ---
+
+    const BUILTIN_APPS = [
+      {
+        id: 'office-8bit',
+        name: 'Oracle Office 8-bit',
+        description: 'Bevy pixel art office with live agents, A* pathfinding, saiyan flames',
+        version: 'v3',
+        size: '20MB',
+        builtin: true,
+        url: '/office-8bit/index.html',
+        tags: ['bevy', 'pixel-art', 'agents'],
+      }
+    ];
+
+    // --- Render ---
+
+    let currentApp = null;
+
+    async function render() {
+      const grid = document.getElementById('app-grid');
+      const userApps = await getAllApps();
+      const allApps = [...BUILTIN_APPS, ...userApps];
+
+      document.getElementById('app-count').textContent = `${allApps.length} app${allApps.length !== 1 ? 's' : ''}`;
+
+      grid.innerHTML = '';
+
+      for (const app of allApps) {
+        const card = document.createElement('div');
+        card.className = `app-card${currentApp === app.id ? ' running' : ''}`;
+        card.innerHTML = `
+          <div class="status-dot"></div>
+          <div class="app-name">${esc(app.name)}</div>
+          <div class="app-desc">${esc(app.description || '')}</div>
+          <div class="app-meta">
+            ${app.version ? `<span class="tag">${esc(app.version)}</span>` : ''}
+            ${app.size ? `<span class="tag">${esc(app.size)}</span>` : ''}
+            ${(app.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join('')}
+          </div>
+          ${!app.builtin ? `<button class="delete-btn" data-id="${esc(app.id)}">delete</button>` : ''}
+        `;
+        card.addEventListener('click', (e) => {
+          if (e.target.classList.contains('delete-btn')) return;
+          launchApp(app);
+        });
+        grid.appendChild(card);
+      }
+
+      // Delete buttons
+      grid.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const id = btn.dataset.id;
+          if (confirm(`Delete ${id}?`)) {
+            await deleteApp(id);
+            render();
+          }
+        });
+      });
+
+      // Upload card
+      const upload = document.createElement('div');
+      upload.className = 'app-card upload-card';
+      upload.innerHTML = `
+        <div class="icon">+</div>
+        <div class="label">Drop WASM app here</div>
+        <div class="label" style="font-size:10px;opacity:0.5">(.zip with index.html + .wasm + .js)</div>
+      `;
+      upload.addEventListener('click', () => document.getElementById('file-input').click());
+      upload.addEventListener('dragover', (e) => { e.preventDefault(); upload.classList.add('dragover'); });
+      upload.addEventListener('dragleave', () => upload.classList.remove('dragover'));
+      upload.addEventListener('drop', (e) => {
+        e.preventDefault();
+        upload.classList.remove('dragover');
+        handleFiles(e.dataTransfer.files);
+      });
+      grid.appendChild(upload);
+    }
+
+    // --- Launch app ---
+
+    function launchApp(app) {
+      currentApp = app.id;
+      const runner = document.getElementById('runner');
+      const frame = document.getElementById('runner-frame');
+
+      document.getElementById('runner-title').textContent = app.name;
+      document.getElementById('runner-info').textContent = `${app.version || ''} | ${app.size || ''}`;
+
+      if (app.builtin) {
+        frame.src = app.url;
+      } else {
+        // Create blob URL from stored files
+        launchUserApp(app, frame);
+      }
+
+      runner.classList.add('active');
+      render();
+    }
+
+    async function launchUserApp(app, frame) {
+      // Build a blob URL from the stored HTML + assets
+      const html = app.files['index.html'];
+      if (!html) { alert('No index.html found in app'); return; }
+
+      // Rewrite asset URLs to blob URLs
+      let htmlText = new TextDecoder().decode(html);
+
+      // Create blob URLs for each file
+      const blobUrls = {};
+      for (const [name, data] of Object.entries(app.files)) {
+        if (name === 'index.html') continue;
+        const mime = name.endsWith('.wasm') ? 'application/wasm'
+          : name.endsWith('.js') ? 'application/javascript'
+          : 'application/octet-stream';
+        const blob = new Blob([data], { type: mime });
+        blobUrls[name] = URL.createObjectURL(blob);
+        // Replace references in HTML
+        htmlText = htmlText.replaceAll(name, blobUrls[name]);
+        // Also replace with leading ./
+        htmlText = htmlText.replaceAll(`./${name}`, blobUrls[name]);
+      }
+
+      // Also patch JS files that reference .wasm
+      for (const [name, data] of Object.entries(app.files)) {
+        if (!name.endsWith('.js')) continue;
+        let jsText = new TextDecoder().decode(data);
+        for (const [fname, url] of Object.entries(blobUrls)) {
+          if (fname.endsWith('.wasm')) {
+            jsText = jsText.replaceAll(fname, url);
+          }
+        }
+        const blob = new Blob([jsText], { type: 'application/javascript' });
+        const newUrl = URL.createObjectURL(blob);
+        htmlText = htmlText.replaceAll(blobUrls[name], newUrl);
+        blobUrls[name] = newUrl;
+      }
+
+      const htmlBlob = new Blob([htmlText], { type: 'text/html' });
+      frame.src = URL.createObjectURL(htmlBlob);
+    }
+
+    function closeRunner() {
+      const runner = document.getElementById('runner');
+      const frame = document.getElementById('runner-frame');
+      frame.src = 'about:blank';
+      runner.classList.remove('active');
+      currentApp = null;
+      render();
+    }
+
+    document.getElementById('back-btn').addEventListener('click', closeRunner);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && document.getElementById('runner').classList.contains('active')) {
+        closeRunner();
+      }
+    });
+
+    // --- File upload / zip handling ---
+
+    document.getElementById('file-input').addEventListener('change', (e) => {
+      handleFiles(e.target.files);
+      e.target.value = '';
+    });
+
+    async function handleFiles(fileList) {
+      for (const file of fileList) {
+        if (file.name.endsWith('.zip')) {
+          await handleZip(file);
+        } else if (file.name.endsWith('.wasm')) {
+          // Single WASM — prompt for more files?
+          alert('Please upload a .zip containing index.html + .wasm + .js');
+        }
+      }
+    }
+
+    async function handleZip(file) {
+      // Use JSZip-like approach with native DecompressionStream
+      // For simplicity, use a minimal zip reader
+      const buffer = await file.arrayBuffer();
+      const files = await unzip(buffer);
+
+      if (!files['index.html']) {
+        alert('Zip must contain index.html');
+        return;
+      }
+
+      const name = file.name.replace('.zip', '');
+      const id = name.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+
+      // Calculate total size
+      let totalSize = 0;
+      for (const data of Object.values(files)) totalSize += data.byteLength;
+      const sizeStr = totalSize > 1024 * 1024
+        ? `${(totalSize / 1024 / 1024).toFixed(1)}MB`
+        : `${(totalSize / 1024).toFixed(0)}KB`;
+
+      await saveApp({
+        id,
+        name,
+        description: `Uploaded WASM app (${Object.keys(files).length} files)`,
+        version: 'uploaded',
+        size: sizeStr,
+        builtin: false,
+        tags: ['uploaded'],
+        files,
+        uploadedAt: Date.now(),
+      });
+
+      render();
+    }
+
+    // --- Minimal ZIP reader (no dependencies) ---
+
+    async function unzip(buffer) {
+      const view = new DataView(buffer);
+      const files = {};
+      let offset = 0;
+
+      while (offset < buffer.byteLength - 4) {
+        const sig = view.getUint32(offset, true);
+        if (sig !== 0x04034b50) break; // Not a local file header
+
+        const method = view.getUint16(offset + 8, true);
+        const compSize = view.getUint32(offset + 18, true);
+        const uncompSize = view.getUint32(offset + 22, true);
+        const nameLen = view.getUint16(offset + 26, true);
+        const extraLen = view.getUint16(offset + 28, true);
+
+        const nameBytes = new Uint8Array(buffer, offset + 30, nameLen);
+        const name = new TextDecoder().decode(nameBytes);
+
+        const dataStart = offset + 30 + nameLen + extraLen;
+        const rawData = new Uint8Array(buffer, dataStart, compSize);
+
+        if (method === 0) {
+          // Stored (no compression)
+          files[stripPrefix(name)] = rawData.slice();
+        } else if (method === 8) {
+          // Deflate — use DecompressionStream
+          try {
+            const ds = new DecompressionStream('raw-deflate');
+            const writer = ds.writable.getWriter();
+            const reader = ds.readable.getReader();
+            writer.write(rawData);
+            writer.close();
+
+            const chunks = [];
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              chunks.push(value);
+            }
+
+            const total = chunks.reduce((s, c) => s + c.byteLength, 0);
+            const result = new Uint8Array(total);
+            let pos = 0;
+            for (const chunk of chunks) {
+              result.set(chunk, pos);
+              pos += chunk.byteLength;
+            }
+            files[stripPrefix(name)] = result;
+          } catch (e) {
+            console.warn(`Failed to decompress ${name}:`, e);
+          }
+        }
+
+        offset = dataStart + compSize;
+      }
+
+      return files;
+    }
+
+    // Strip leading directory from zip paths (e.g. "app/index.html" → "index.html")
+    function stripPrefix(name) {
+      // If all files share a common prefix dir, strip it
+      const parts = name.split('/');
+      if (parts.length > 1 && parts[0] !== '') {
+        return parts.slice(1).join('/');
+      }
+      return name;
+    }
+
+    function esc(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // --- Init ---
+    render();
+  </script>
+</body>
+</html>

@@ -25,6 +25,8 @@ wasm-bindgen "$WASM_FILE" \
 # Copy web files
 cp web/index.html "$OUT_DIR/"
 cp web/bridge.js "$OUT_DIR/"
+cp web/hub.html "$OUT_DIR/"
+cp web/canvas-bridge.js "$OUT_DIR/"
 
 # Copy assets
 cp -r assets "$OUT_DIR/"
