@@ -63,9 +63,19 @@ if [ "$APP" = "all" ] || [ "$APP" = "race-track" ]; then
   cp -r assets dist-race-track/
 fi
 
+# --- Superman Universe ---
+if [ "$APP" = "all" ] || [ "$APP" = "superman" ]; then
+  build_app "superman" "dist-superman"
+  cp web/superman.html dist-superman/index.html
+  cp web/bridge.js dist-superman/
+  cp web/canvas-bridge.js dist-superman/
+  cp -r assets dist-superman/
+fi
+
 echo ""
 echo "=== Build complete ==="
 echo "Office:     dist/"
 echo "War Room:   dist-war-room/"
 echo "Race Track: dist-race-track/"
-ls -la dist/*.wasm dist-war-room/*.wasm dist-race-track/*.wasm 2>/dev/null
+echo "Superman:   dist-superman/"
+ls -la dist/*.wasm dist-war-room/*.wasm dist-race-track/*.wasm dist-superman/*.wasm 2>/dev/null

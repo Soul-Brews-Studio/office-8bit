@@ -19,6 +19,10 @@ path = "src/war_room.rs"
 name = "race-track"
 path = "src/race_track.rs"
 
+[[bin]]
+name = "superman"
+path = "src/superman.rs"
+
 [dependencies]
 bevy = { version = "0.15", default-features = false, features = [
     "bevy_asset",

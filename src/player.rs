@@ -6,8 +6,15 @@ use crate::tilemap::{OfficeMap, SCALED_TILE, WORLD_W, WORLD_H};
 
 pub struct PlayerPlugin;
 
+/// Insert before PlayerPlugin to disable click-to-walk (WASD only)
+#[derive(Resource)]
+pub struct ClickToWalkEnabled(pub bool);
+
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
+        if !app.world().contains_resource::<ClickToWalkEnabled>() {
+            app.insert_resource(ClickToWalkEnabled(true));
+        }
         app.insert_resource(PlayerSpawned(false))
             .insert_resource(CameraDelay(Timer::from_seconds(2.0, TimerMode::Once)))
             .insert_resource(RoomZoom {
@@ -139,7 +146,9 @@ fn click_to_walk(
     office: Res<OfficeMap>,
     mut commands: Commands,
     player_q: Query<(Entity, &Transform), With<Player>>,
+    click_enabled: Res<ClickToWalkEnabled>,
 ) {
+    if !click_enabled.0 { return; }
     // Don't click-walk during Space+drag pan
     if keys.pressed(KeyCode::Space) { return; }
     if !mouse.just_pressed(MouseButton::Left) { return; }

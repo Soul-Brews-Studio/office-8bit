@@ -6,8 +6,8 @@ use office_8bit::camera::CameraPlugin;
 use office_8bit::bridge::BridgePlugin;
 use office_8bit::player::{PlayerPlugin, ClickToWalkEnabled};
 
-mod race_track_tilemap;
-use race_track_tilemap::RaceTrackPlugin;
+mod superman_universe;
+use superman_universe::SupermanPlugin;
 
 fn main() {
     App::new()
@@ -15,7 +15,7 @@ fn main() {
             DefaultPlugins
                 .set(WindowPlugin {
                     primary_window: Some(Window {
-                        title: "Oracle Race Track".to_string(),
+                        title: "Oracle Universe".to_string(),
                         resolution: (1024., 768.).into(),
                         canvas: Some("#office-canvas".to_string()),
                         fit_canvas_to_parent: true,
@@ -26,17 +26,17 @@ fn main() {
                 })
                 .set(ImagePlugin::default_nearest())
                 .set(AssetPlugin {
-                    file_path: "race-track/assets".to_string(),
+                    file_path: "superman/assets".to_string(),
                     meta_check: AssetMetaCheck::Never,
                     ..default()
                 }),
         )
         .insert_resource(ClearColor(Color::srgb(
-            0.06, 0.12, 0.06, // dark green tint
+            0.02, 0.02, 0.08, // deep space blue
         )))
-        .insert_resource(ClickToWalkEnabled(false)) // WASD only for racing
+        .insert_resource(ClickToWalkEnabled(false)) // WASD only in universe
         .add_plugins((
-            RaceTrackPlugin,
+            SupermanPlugin,
             AgentsPlugin,
             CameraPlugin,
             BridgePlugin,
