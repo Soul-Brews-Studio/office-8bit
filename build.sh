@@ -54,8 +54,18 @@ if [ "$APP" = "all" ] || [ "$APP" = "war-room" ]; then
   cp -r assets dist-war-room/
 fi
 
+# --- Race Track ---
+if [ "$APP" = "all" ] || [ "$APP" = "race-track" ]; then
+  build_app "race-track" "dist-race-track"
+  cp web/race-track.html dist-race-track/index.html
+  cp web/bridge.js dist-race-track/
+  cp web/canvas-bridge.js dist-race-track/
+  cp -r assets dist-race-track/
+fi
+
 echo ""
 echo "=== Build complete ==="
-echo "Office:   dist/"
-echo "War Room: dist-war-room/"
-ls -la dist/*.wasm dist-war-room/*.wasm 2>/dev/null
+echo "Office:     dist/"
+echo "War Room:   dist-war-room/"
+echo "Race Track: dist-race-track/"
+ls -la dist/*.wasm dist-war-room/*.wasm dist-race-track/*.wasm 2>/dev/null

@@ -3,7 +3,7 @@ use office_8bit::tilemap::{
     OfficeMap, Room, TileKind, DynRoomState,
     SCALED_TILE, WORLD_W, WORLD_H,
 };
-use office_8bit::agents::AgentRegistry;
+use office_8bit::agents::{Agent, AgentRegistry};
 
 pub struct WarRoomPlugin;
 
@@ -300,17 +300,28 @@ fn spawn_war_room(
     ));
 }
 
-/// Make sure all agents go into the single war room
+/// Make sure all agents go into the single war room.
+/// When sessions change, despawn existing agents to force re-spawn at correct desks.
 fn ensure_war_room(
     mut registry: ResMut<AgentRegistry>,
     office: Res<OfficeMap>,
+    existing: Query<Entity, With<Agent>>,
+    mut commands: Commands,
 ) {
     if !registry.dirty || office.rooms.is_empty() { return; }
-    // Override all agent sessions to match the war room name
-    // so they all get placed in the same room
     let room_name = &office.rooms[0].name;
+    let mut any_changed = false;
     for agent in &mut registry.agents {
-        agent.session = room_name.clone();
+        if agent.session != *room_name {
+            agent.session = room_name.clone();
+            any_changed = true;
+        }
+    }
+    // Force re-spawn so agents spread across desks around the table
+    if any_changed {
+        for entity in existing.iter() {
+            commands.entity(entity).despawn_recursive();
+        }
     }
 }
 
