@@ -116,13 +116,19 @@ fn spawn_war_room(
         }
     }
 
-    // Seats around the table — every other tile for spacing
+    // Seats around the table — collect per side, then interleave
+    // so agents spread around all 4 sides evenly (not fill one row first)
+    let mut top_seats = Vec::new();
+    let mut bottom_seats = Vec::new();
+    let mut left_seats = Vec::new();
+    let mut right_seats = Vec::new();
+
     // Top row seats
     for col in ((cx - table_hw)..=(cx + table_hw)).step_by(2) {
         let r = cy - table_hh - 1;
         if r > 0 {
             room.tiles[r as usize][col as usize] = TileKind::Chair;
-            room.desks.push((col, r));
+            top_seats.push((col, r));
         }
     }
     // Bottom row seats
@@ -130,7 +136,7 @@ fn spawn_war_room(
         let r = cy + table_hh + 1;
         if (r as usize) < ROOM_H as usize - 1 {
             room.tiles[r as usize][col as usize] = TileKind::Chair;
-            room.desks.push((col, r));
+            bottom_seats.push((col, r));
         }
     }
     // Left side seats
@@ -138,7 +144,7 @@ fn spawn_war_room(
         let c = cx - table_hw - 1;
         if c > 0 {
             room.tiles[row as usize][c as usize] = TileKind::Chair;
-            room.desks.push((c, row));
+            left_seats.push((c, row));
         }
     }
     // Right side seats
@@ -146,7 +152,18 @@ fn spawn_war_room(
         let c = cx + table_hw + 1;
         if (c as usize) < ROOM_W as usize - 1 {
             room.tiles[row as usize][c as usize] = TileKind::Chair;
-            room.desks.push((c, row));
+            right_seats.push((c, row));
+        }
+    }
+
+    // Interleave: top, bottom, left, right, top, bottom, left, right...
+    let sides: [&Vec<(i32, i32)>; 4] = [&top_seats, &bottom_seats, &left_seats, &right_seats];
+    let max_per_side = sides.iter().map(|s| s.len()).max().unwrap_or(0);
+    for i in 0..max_per_side {
+        for side in &sides {
+            if i < side.len() {
+                room.desks.push(side[i]);
+            }
         }
     }
 
