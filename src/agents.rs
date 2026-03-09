@@ -28,14 +28,31 @@ pub struct SpriteAssets {
     pub saiyan_atlas: Handle<TextureAtlasLayout>,
 }
 
+fn embed_png(images: &mut Assets<Image>, bytes: &[u8]) -> Handle<Image> {
+    let image = Image::from_buffer(
+        bytes,
+        bevy::image::ImageType::Extension("png"),
+        Default::default(),
+        true,
+        bevy::image::ImageSampler::nearest(),
+        bevy::asset::RenderAssetUsages::default(),
+    ).expect("Failed to load embedded PNG");
+    images.add(image)
+}
+
 fn load_sprite_assets(
     mut commands: Commands,
-    asset_server: Res<AssetServer>,
+    mut images: ResMut<Assets<Image>>,
     mut atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
 ) {
-    let characters: Vec<Handle<Image>> = (0..6)
-        .map(|i| asset_server.load(format!("sprites/char_{i}.png")))
-        .collect();
+    let characters = vec![
+        embed_png(&mut images, include_bytes!("../assets/sprites/char_0.png")),
+        embed_png(&mut images, include_bytes!("../assets/sprites/char_1.png")),
+        embed_png(&mut images, include_bytes!("../assets/sprites/char_2.png")),
+        embed_png(&mut images, include_bytes!("../assets/sprites/char_3.png")),
+        embed_png(&mut images, include_bytes!("../assets/sprites/char_4.png")),
+        embed_png(&mut images, include_bytes!("../assets/sprites/char_5.png")),
+    ];
 
     // Character atlas: 7 columns × 3 rows, each frame 16×32
     let atlas_layout = atlas_layouts.add(
@@ -43,7 +60,7 @@ fn load_sprite_assets(
     );
 
     // Saiyan flame atlas: 1280×1749 sprite sheet, 8 cols × 10 rows (160×174 per frame)
-    let saiyan_flame = asset_server.load("sprites/saiyan_effect.png");
+    let saiyan_flame = embed_png(&mut images, include_bytes!("../assets/sprites/saiyan_effect.png"));
     let saiyan_atlas = atlas_layouts.add(
         TextureAtlasLayout::from_grid(UVec2::new(160, 174), 8, 10, None, None)
     );

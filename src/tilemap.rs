@@ -59,17 +59,29 @@ mod tile_idx {
     pub const CHAIR: usize = dark(3, 0);
 }
 
+fn embed_png(images: &mut Assets<Image>, bytes: &[u8]) -> Handle<Image> {
+    let image = Image::from_buffer(
+        bytes,
+        bevy::image::ImageType::Extension("png"),
+        Default::default(),
+        true,
+        bevy::image::ImageSampler::nearest(),
+        bevy::asset::RenderAssetUsages::default(),
+    ).expect("Failed to load embedded PNG");
+    images.add(image)
+}
+
 fn load_tile_assets(
     mut commands: Commands,
-    asset_server: Res<AssetServer>,
+    mut images: ResMut<Assets<Image>>,
     mut atlas_layouts: ResMut<Assets<TextureAtlasLayout>>,
 ) {
-    let tileset = asset_server.load("tiles/room3.png");
-    let tree = asset_server.load("tiles/tree.png");
-    let grass = asset_server.load("tiles/grass.png");
-    let path = asset_server.load("tiles/path.png");
-    let water = asset_server.load("tiles/water.png");
-    let mountain = asset_server.load("tiles/mountain.png");
+    let tileset = embed_png(&mut images, include_bytes!("../assets/tiles/room3.png"));
+    let tree = embed_png(&mut images, include_bytes!("../assets/tiles/tree.png"));
+    let grass = embed_png(&mut images, include_bytes!("../assets/tiles/grass.png"));
+    let path = embed_png(&mut images, include_bytes!("../assets/tiles/path.png"));
+    let water = embed_png(&mut images, include_bytes!("../assets/tiles/water.png"));
+    let mountain = embed_png(&mut images, include_bytes!("../assets/tiles/mountain.png"));
 
     let tile_layout = atlas_layouts.add(
         TextureAtlasLayout::from_grid(UVec2::new(16, 16), 15, 4, None, None)

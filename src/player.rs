@@ -62,6 +62,12 @@ pub struct WalkTarget {
 }
 
 #[derive(Component)]
+pub struct WalkPath {
+    pub waypoints: Vec<Vec2>,
+    pub current: usize,
+}
+
+#[derive(Component)]
 pub struct PlayerAnimation {
     pub timer: Timer,
     pub frame: usize,
@@ -106,14 +112,15 @@ fn spawn_player(
     ));
 }
 
-/// Click to set walk target
+/// Click to set walk target with A* pathfinding
 fn click_to_walk(
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
     window_q: Query<&Window, With<PrimaryWindow>>,
     camera_q: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
+    office: Res<OfficeMap>,
     mut commands: Commands,
-    player_q: Query<Entity, With<Player>>,
+    player_q: Query<(Entity, &Transform), With<Player>>,
 ) {
     // Don't click-walk during Space+drag pan
     if keys.pressed(KeyCode::Space) { return; }
@@ -121,12 +128,107 @@ fn click_to_walk(
 
     let Ok(window) = window_q.get_single() else { return };
     let Ok((camera, cam_transform)) = camera_q.get_single() else { return };
-    let Ok(player_entity) = player_q.get_single() else { return };
+    let Ok((player_entity, player_tf)) = player_q.get_single() else { return };
 
     let Some(cursor) = window.cursor_position() else { return };
     let Ok(world_pos) = camera.viewport_to_world_2d(cam_transform, cursor) else { return };
 
-    commands.entity(player_entity).insert(WalkTarget { pos: world_pos });
+    // Convert to tile coords
+    let start = world_to_tile(player_tf.translation.x, player_tf.translation.y);
+    let goal = world_to_tile(world_pos.x, world_pos.y);
+
+    if let Some(path) = astar_path(&office, start, goal) {
+        let waypoints: Vec<Vec2> = path.iter().map(|&(tx, ty)| tile_to_world(tx, ty)).collect();
+        commands.entity(player_entity)
+            .insert(WalkPath { waypoints, current: 0 })
+            .remove::<WalkTarget>();
+    } else {
+        // Fallback: direct walk if no path found
+        commands.entity(player_entity)
+            .insert(WalkTarget { pos: world_pos })
+            .remove::<WalkPath>();
+    }
+}
+
+fn world_to_tile(wx: f32, wy: f32) -> (i32, i32) {
+    ((wx / SCALED_TILE).round() as i32, (-wy / SCALED_TILE).round() as i32)
+}
+
+fn tile_to_world(tx: i32, ty: i32) -> Vec2 {
+    Vec2::new(tx as f32 * SCALED_TILE, -(ty as f32) * SCALED_TILE)
+}
+
+/// A* pathfinding on tile grid
+fn astar_path(office: &OfficeMap, start: (i32, i32), goal: (i32, i32)) -> Option<Vec<(i32, i32)>> {
+    use std::collections::{BinaryHeap, HashMap};
+    use std::cmp::Reverse;
+
+    if goal.0 < 0 || goal.1 < 0 || goal.0 >= WORLD_W || goal.1 >= WORLD_H {
+        return None;
+    }
+    if !office.world[goal.1 as usize][goal.0 as usize].is_walkable() {
+        return None;
+    }
+
+    #[derive(Eq, PartialEq)]
+    struct Node { f: i32, pos: (i32, i32) }
+    impl Ord for Node { fn cmp(&self, other: &Self) -> std::cmp::Ordering { Reverse(self.f).cmp(&Reverse(other.f)) } }
+    impl PartialOrd for Node { fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> { Some(self.cmp(other)) } }
+
+    let mut open = BinaryHeap::new();
+    let mut came_from: HashMap<(i32, i32), (i32, i32)> = HashMap::new();
+    let mut g_score: HashMap<(i32, i32), i32> = HashMap::new();
+
+    let h = |p: (i32, i32)| (p.0 - goal.0).abs() + (p.1 - goal.1).abs();
+
+    g_score.insert(start, 0);
+    open.push(Node { f: h(start), pos: start });
+
+    let dirs = [(0, 1), (0, -1), (1, 0), (-1, 0), (1, 1), (1, -1), (-1, 1), (-1, -1)];
+
+    while let Some(Node { pos, .. }) = open.pop() {
+        if pos == goal {
+            // Reconstruct path
+            let mut path = vec![goal];
+            let mut current = goal;
+            while let Some(&prev) = came_from.get(&current) {
+                path.push(prev);
+                current = prev;
+            }
+            path.reverse();
+            // Simplify: skip every other waypoint for smoother movement
+            let simplified: Vec<_> = path.into_iter().enumerate()
+                .filter(|(i, _)| i % 2 == 0 || *i == 0)
+                .map(|(_, p)| p)
+                .collect();
+            return Some(simplified);
+        }
+
+        let g = g_score[&pos];
+
+        for (dx, dy) in &dirs {
+            let next = (pos.0 + dx, pos.1 + dy);
+            if next.0 < 0 || next.1 < 0 || next.0 >= WORLD_W || next.1 >= WORLD_H { continue; }
+            if !office.world[next.1 as usize][next.0 as usize].is_walkable() { continue; }
+
+            // Diagonal: check both cardinal neighbors are walkable (no corner cutting)
+            if *dx != 0 && *dy != 0 {
+                if !office.world[pos.1 as usize][(pos.0 + dx) as usize].is_walkable() { continue; }
+                if !office.world[(pos.1 + dy) as usize][pos.0 as usize].is_walkable() { continue; }
+            }
+
+            let cost = if *dx != 0 && *dy != 0 { 14 } else { 10 }; // diagonal = ~1.4x
+            let new_g = g + cost;
+
+            if new_g < *g_score.get(&next).unwrap_or(&i32::MAX) {
+                g_score.insert(next, new_g);
+                came_from.insert(next, pos);
+                open.push(Node { f: new_g + h(next) * 10, pos: next });
+            }
+        }
+    }
+
+    None // No path found
 }
 
 fn player_movement(
@@ -134,9 +236,9 @@ fn player_movement(
     keys: Res<ButtonInput<KeyCode>>,
     office: Res<OfficeMap>,
     mut commands: Commands,
-    mut query: Query<(Entity, &mut Transform, &mut Player, Option<&WalkTarget>)>,
+    mut query: Query<(Entity, &mut Transform, &mut Player, Option<&WalkTarget>, Option<&mut WalkPath>)>,
 ) {
-    let Ok((entity, mut transform, mut player, walk_target)) = query.get_single_mut() else { return };
+    let Ok((entity, mut transform, mut player, walk_target, walk_path)) = query.get_single_mut() else { return };
 
     if keys.pressed(KeyCode::Space) {
         player.moving = false;
@@ -170,22 +272,44 @@ fn player_movement(
     // WASD cancels click-to-walk
     if keyboard_input {
         commands.entity(entity).remove::<WalkTarget>();
+        commands.entity(entity).remove::<WalkPath>();
     }
 
-    // Click-to-walk: auto-move toward target
+    // A* path following: walk through waypoints
     if !keyboard_input {
-        if let Some(target) = walk_target {
+        if let Some(mut path) = walk_path {
+            if path.current < path.waypoints.len() {
+                let target = path.waypoints[path.current];
+                let current = transform.translation.truncate();
+                let to_target = target - current;
+                let dist = to_target.length();
+
+                if dist < SCALED_TILE * 0.3 {
+                    path.current += 1;
+                    if path.current >= path.waypoints.len() {
+                        commands.entity(entity).remove::<WalkPath>();
+                    }
+                } else {
+                    direction = to_target.normalize();
+                    if to_target.x.abs() > to_target.y.abs() {
+                        player.facing = if to_target.x > 0.0 { Facing::Right } else { Facing::Left };
+                    } else {
+                        player.facing = if to_target.y > 0.0 { Facing::Up } else { Facing::Down };
+                    }
+                }
+            } else {
+                commands.entity(entity).remove::<WalkPath>();
+            }
+        } else if let Some(target) = walk_target {
+            // Fallback: straight-line walk
             let current = transform.translation.truncate();
             let to_target = target.pos - current;
             let dist = to_target.length();
 
             if dist < SCALED_TILE * 0.5 {
-                // Arrived
                 commands.entity(entity).remove::<WalkTarget>();
-                direction = Vec2::ZERO;
             } else {
                 direction = to_target.normalize();
-                // Set facing based on dominant direction
                 if to_target.x.abs() > to_target.y.abs() {
                     player.facing = if to_target.x > 0.0 { Facing::Right } else { Facing::Left };
                 } else {
@@ -214,9 +338,9 @@ fn player_movement(
             transform.translation.x = new_x;
         } else if is_walkable(&office, transform.translation.x, new_y) {
             transform.translation.y = new_y;
-            // Hit wall — cancel walk target
-            commands.entity(entity).remove::<WalkTarget>();
         } else {
+            // Stuck — cancel path
+            commands.entity(entity).remove::<WalkPath>();
             commands.entity(entity).remove::<WalkTarget>();
         }
     }
