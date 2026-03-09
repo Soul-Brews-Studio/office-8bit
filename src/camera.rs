@@ -15,18 +15,21 @@ impl Plugin for CameraPlugin {
 pub struct MainCamera;
 
 fn setup_camera(mut commands: Commands) {
+    // Start camera at top-left room area — will pan to player once spawned
+    let start_x = 10.0 * crate::tilemap::SCALED_TILE;
+    let start_y = -(8.0 * crate::tilemap::SCALED_TILE);
     commands.spawn((
         Camera2d::default(),
         MainCamera,
         OrthographicProjection {
-            scale: 1.8, // start zoomed out (outdoor)
+            scale: 5.0, // start wide overview showing all rooms
             ..OrthographicProjection::default_2d()
         },
-        Transform::from_xyz(0.0, 0.0, 999.0),
+        Transform::from_xyz(start_x, start_y, 999.0),
     ));
 }
 
-/// Ctrl + scroll to manually adjust zoom (overrides auto-zoom temporarily)
+/// Ctrl + scroll to manually adjust zoom — logarithmic for smooth feel
 fn camera_zoom(
     mut scroll_events: EventReader<MouseWheel>,
     keys: Res<ButtonInput<KeyCode>>,
@@ -38,8 +41,9 @@ fn camera_zoom(
     }
 
     for event in scroll_events.read() {
-        let zoom_delta = -event.y * 0.15;
-        room_zoom.target_scale = (room_zoom.target_scale + zoom_delta).clamp(0.3, 5.0);
+        // Logarithmic zoom: multiply by factor instead of adding
+        let factor = if event.y > 0.0 { 0.9 } else { 1.1 };
+        room_zoom.target_scale = (room_zoom.target_scale * factor).clamp(0.3, 5.0);
     }
 }
 

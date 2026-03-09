@@ -309,40 +309,32 @@ fn spawn_outdoor(
 
             match tile {
                 TileKind::Grass => {
-                    let mut sprite = Sprite::from_image(tile_assets.grass.clone());
-                    sprite.custom_size = Some(Vec2::splat(SCALED_TILE + 1.0));
-                    commands.spawn((
-                        sprite,
-                        Transform::from_xyz(pos.x, pos.y, -2.0),
-                        TileEntity,
-                    ));
+                    let v = ((wx * 7 + wy * 13) % 5) as f32;
+                    let g = 0.32 + v * 0.03;
+                    spawn_color_tile(&mut commands, Color::srgb(0.14, g, 0.12), pos, 0.0);
                 }
                 TileKind::Path => {
-                    let mut sprite = Sprite::from_image(tile_assets.path.clone());
-                    sprite.custom_size = Some(Vec2::splat(SCALED_TILE + 1.0));
-                    commands.spawn((
-                        sprite,
-                        Transform::from_xyz(pos.x, pos.y, -1.5),
-                        TileEntity,
-                    ));
+                    let v = ((wx + wy) % 3) as f32 * 0.02;
+                    spawn_color_tile(&mut commands, Color::srgb(0.55 + v, 0.45 + v, 0.30), pos, 0.05);
                 }
                 TileKind::Mountain => {
-                    let mut sprite = Sprite::from_image(tile_assets.mountain.clone());
-                    sprite.custom_size = Some(Vec2::splat(SCALED_TILE + 1.0));
-                    commands.spawn((
-                        sprite,
-                        Transform::from_xyz(pos.x, pos.y, -1.0),
-                        TileEntity,
-                    ));
+                    let v = ((wx * 3 + wy * 5) % 4) as f32 * 0.03;
+                    let base = 0.20 + (wy as f32 * 0.01).min(0.15);
+                    spawn_color_tile(&mut commands, Color::srgb(base + v, base + v + 0.02, base + v + 0.05), pos, 0.1);
+                    if wy <= 1 && wx % 4 < 2 {
+                        commands.spawn((
+                            Sprite {
+                                color: Color::srgba(0.85, 0.88, 0.92, 0.7),
+                                custom_size: Some(Vec2::new(SCALED_TILE * 0.6, SCALED_TILE * 0.3)),
+                                ..default()
+                            },
+                            Transform::from_xyz(pos.x, pos.y + SCALED_TILE * 0.3, 0.15),
+                        ));
+                    }
                 }
                 TileKind::Water => {
-                    let mut sprite = Sprite::from_image(tile_assets.water.clone());
-                    sprite.custom_size = Some(Vec2::splat(SCALED_TILE + 1.0));
-                    commands.spawn((
-                        sprite,
-                        Transform::from_xyz(pos.x, pos.y, -1.0),
-                        TileEntity,
-                    ));
+                    let v = ((wx + wy) % 2) as f32 * 0.04;
+                    spawn_color_tile(&mut commands, Color::srgb(0.10, 0.25 + v, 0.55 + v), pos, 0.1);
                 }
                 _ => {}
             }
@@ -494,6 +486,8 @@ pub fn spawn_dynamic_rooms(
 
                 match tile {
                     TileKind::Wall => {
+                        // Light base behind wall for contrast
+                        spawn_room_base(&mut commands, pos, 0.9);
                         let wall_pos = classify_wall(wx as i32, wy as i32, room);
                         let atlas_index = wall_atlas_index(wall_pos);
                         let mut sprite = Sprite::from_atlas_image(
@@ -511,6 +505,8 @@ pub fn spawn_dynamic_rooms(
                         ));
                     }
                     TileKind::Floor | TileKind::Desk | TileKind::Chair => {
+                        // Warm floor base for contrast against green grass
+                        spawn_room_base(&mut commands, pos, 0.4);
                         let atlas_index = match tile {
                             TileKind::Desk => tile_idx::DESK,
                             TileKind::Chair => tile_idx::CHAIR,
@@ -535,7 +531,7 @@ pub fn spawn_dynamic_rooms(
                     TileKind::Door => {
                         commands.spawn((
                             Sprite {
-                                color: Color::srgb(0.22, 0.18, 0.12),
+                                color: Color::srgb(0.35, 0.28, 0.18),
                                 custom_size: Some(Vec2::splat(SCALED_TILE)),
                                 ..default()
                             },
@@ -575,4 +571,28 @@ pub fn spawn_dynamic_rooms(
 
     // Trigger agent re-sync so they place in new rooms
     registry.dirty = true;
+}
+
+fn spawn_room_base(commands: &mut Commands, pos: Vec2, z: f32) {
+    commands.spawn((
+        Sprite {
+            color: Color::srgb(0.12, 0.11, 0.16), // warm dark — contrasts with green grass
+            custom_size: Some(Vec2::splat(SCALED_TILE + 1.0)),
+            ..default()
+        },
+        Transform::from_xyz(pos.x, pos.y, z),
+        DynRoomTile,
+    ));
+}
+
+fn spawn_color_tile(commands: &mut Commands, color: Color, pos: Vec2, z: f32) {
+    commands.spawn((
+        Sprite {
+            color,
+            custom_size: Some(Vec2::splat(SCALED_TILE + 1.0)),
+            ..default()
+        },
+        Transform::from_xyz(pos.x, pos.y, z),
+        TileEntity,
+    ));
 }

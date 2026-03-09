@@ -15,6 +15,7 @@ impl Plugin for BridgePlugin {
         app.insert_resource(PopupState::default())
             .add_systems(Update, (
                 poll_js_data,
+                poll_zoom,
                 detect_player_proximity,
                 detect_hover,
                 export_popup_state,
@@ -67,6 +68,12 @@ extern "C" {
 
     #[wasm_bindgen(js_namespace = window, js_name = "__oracle_set_bg")]
     fn set_bg(image_url: &str);
+
+    #[wasm_bindgen(js_namespace = window, js_name = "__oracle_get_zoom")]
+    fn get_zoom_delta() -> f32;
+
+    #[wasm_bindgen(js_namespace = window, js_name = "__oracle_set_zoom_level")]
+    fn set_zoom_level(level: f32);
 }
 
 // --- Background ---
@@ -84,6 +91,22 @@ fn send_bg_to_js(
     #[cfg(target_arch = "wasm32")]
     {
         set_bg("office-8bit/assets/tiles/walls.png");
+    }
+}
+
+// --- Zoom from HTML buttons ---
+
+fn poll_zoom(
+    mut room_zoom: ResMut<crate::player::RoomZoom>,
+) {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let delta = get_zoom_delta();
+        if delta != 0.0 {
+            let factor = if delta < 0.0 { 0.85 } else { 1.15 };
+            room_zoom.target_scale = (room_zoom.target_scale * factor).clamp(0.3, 5.0);
+        }
+        set_zoom_level(room_zoom.target_scale);
     }
 }
 

@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use bevy::window::PrimaryWindow;
 use crate::agents::SpriteAssets;
 use crate::camera::MainCamera;
 use crate::tilemap::{OfficeMap, SCALED_TILE, WORLD_W, WORLD_H};
@@ -8,12 +9,14 @@ pub struct PlayerPlugin;
 impl Plugin for PlayerPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(PlayerSpawned(false))
+            .insert_resource(CameraDelay(Timer::from_seconds(2.0, TimerMode::Once)))
             .insert_resource(RoomZoom {
-                target_scale: OUTDOOR_ZOOM,
+                target_scale: 5.0, // hold at 5.0 during delay, then → 2.1
                 current_room: None,
             })
             .add_systems(Update, (
                 spawn_player,
+                click_to_walk,
                 player_movement,
                 player_animation,
                 detect_room_entry,
@@ -28,6 +31,9 @@ const INDOOR_ZOOM: f32 = 0.8;
 
 #[derive(Resource)]
 struct PlayerSpawned(bool);
+
+#[derive(Resource)]
+struct CameraDelay(Timer);
 
 #[derive(Resource)]
 pub struct RoomZoom {
@@ -51,6 +57,11 @@ pub enum Facing {
 }
 
 #[derive(Component)]
+pub struct WalkTarget {
+    pub pos: Vec2,
+}
+
+#[derive(Component)]
 pub struct PlayerAnimation {
     pub timer: Timer,
     pub frame: usize,
@@ -67,9 +78,9 @@ fn spawn_player(
     if !office.spawned { return; }
     spawned.0 = true;
 
-    // Spawn near the crossroads center
+    // Spawn at center crossroads
     let start_x = (WORLD_W as f32 / 2.0) * SCALED_TILE;
-    let start_y = -(38.0 * SCALED_TILE);
+    let start_y = -((WORLD_H as f32 / 2.0) * SCALED_TILE);
 
     let mut sprite = Sprite::from_atlas_image(
         sprite_assets.characters[0].clone(),
@@ -95,13 +106,37 @@ fn spawn_player(
     ));
 }
 
+/// Click to set walk target
+fn click_to_walk(
+    mouse: Res<ButtonInput<MouseButton>>,
+    keys: Res<ButtonInput<KeyCode>>,
+    window_q: Query<&Window, With<PrimaryWindow>>,
+    camera_q: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
+    mut commands: Commands,
+    player_q: Query<Entity, With<Player>>,
+) {
+    // Don't click-walk during Space+drag pan
+    if keys.pressed(KeyCode::Space) { return; }
+    if !mouse.just_pressed(MouseButton::Left) { return; }
+
+    let Ok(window) = window_q.get_single() else { return };
+    let Ok((camera, cam_transform)) = camera_q.get_single() else { return };
+    let Ok(player_entity) = player_q.get_single() else { return };
+
+    let Some(cursor) = window.cursor_position() else { return };
+    let Ok(world_pos) = camera.viewport_to_world_2d(cam_transform, cursor) else { return };
+
+    commands.entity(player_entity).insert(WalkTarget { pos: world_pos });
+}
+
 fn player_movement(
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
     office: Res<OfficeMap>,
-    mut query: Query<(&mut Transform, &mut Player)>,
+    mut commands: Commands,
+    mut query: Query<(Entity, &mut Transform, &mut Player, Option<&WalkTarget>)>,
 ) {
-    let Ok((mut transform, mut player)) = query.get_single_mut() else { return };
+    let Ok((entity, mut transform, mut player, walk_target)) = query.get_single_mut() else { return };
 
     if keys.pressed(KeyCode::Space) {
         player.moving = false;
@@ -109,28 +144,66 @@ fn player_movement(
     }
 
     let mut direction = Vec2::ZERO;
+    let mut keyboard_input = false;
 
     if keys.pressed(KeyCode::KeyW) || keys.pressed(KeyCode::ArrowUp) {
         direction.y += 1.0;
         player.facing = Facing::Up;
+        keyboard_input = true;
     }
     if keys.pressed(KeyCode::KeyS) || keys.pressed(KeyCode::ArrowDown) {
         direction.y -= 1.0;
         player.facing = Facing::Down;
+        keyboard_input = true;
     }
     if keys.pressed(KeyCode::KeyA) || keys.pressed(KeyCode::ArrowLeft) {
         direction.x -= 1.0;
         player.facing = Facing::Left;
+        keyboard_input = true;
     }
     if keys.pressed(KeyCode::KeyD) || keys.pressed(KeyCode::ArrowRight) {
         direction.x += 1.0;
         player.facing = Facing::Right;
+        keyboard_input = true;
+    }
+
+    // WASD cancels click-to-walk
+    if keyboard_input {
+        commands.entity(entity).remove::<WalkTarget>();
+    }
+
+    // Click-to-walk: auto-move toward target
+    if !keyboard_input {
+        if let Some(target) = walk_target {
+            let current = transform.translation.truncate();
+            let to_target = target.pos - current;
+            let dist = to_target.length();
+
+            if dist < SCALED_TILE * 0.5 {
+                // Arrived
+                commands.entity(entity).remove::<WalkTarget>();
+                direction = Vec2::ZERO;
+            } else {
+                direction = to_target.normalize();
+                // Set facing based on dominant direction
+                if to_target.x.abs() > to_target.y.abs() {
+                    player.facing = if to_target.x > 0.0 { Facing::Right } else { Facing::Left };
+                } else {
+                    player.facing = if to_target.y > 0.0 { Facing::Up } else { Facing::Down };
+                }
+            }
+        }
     }
 
     player.moving = direction.length() > 0.0;
 
     if player.moving {
-        let delta = direction.normalize() * player.speed * time.delta_secs();
+        let speed = if keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight) {
+            player.speed * 3.0
+        } else {
+            player.speed
+        };
+        let delta = direction.normalize() * speed * time.delta_secs();
         let new_x = transform.translation.x + delta.x;
         let new_y = transform.translation.y + delta.y;
 
@@ -141,6 +214,10 @@ fn player_movement(
             transform.translation.x = new_x;
         } else if is_walkable(&office, transform.translation.x, new_y) {
             transform.translation.y = new_y;
+            // Hit wall — cancel walk target
+            commands.entity(entity).remove::<WalkTarget>();
+        } else {
+            commands.entity(entity).remove::<WalkTarget>();
         }
     }
 }
@@ -222,9 +299,20 @@ fn player_animation(
 fn camera_follow_player(
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
+    mut delay: ResMut<CameraDelay>,
+    mut room_zoom: ResMut<RoomZoom>,
     player: Query<&Transform, (With<Player>, Without<MainCamera>)>,
     mut camera: Query<&mut Transform, With<MainCamera>>,
 ) {
+    // Tick delay timer — hold at 5x overview for 2s before panning to player
+    delay.0.tick(time.delta());
+    if !delay.0.finished() { return; }
+
+    // Once delay expires, set target zoom to 2.1 (only on first transition)
+    if room_zoom.target_scale > 2.5 && room_zoom.current_room.is_none() {
+        room_zoom.target_scale = 2.1;
+    }
+
     if keys.pressed(KeyCode::Space) { return; }
 
     let Ok(player_pos) = player.get_single() else { return };

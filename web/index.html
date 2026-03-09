@@ -61,6 +61,11 @@
       color: rgba(255,255,255,0.5);
     }
 
+    .fps {
+      color: rgba(255,255,255,0.35);
+      font-size: 10px;
+    }
+
     #navbar a {
       color: #64b5f6;
       text-decoration: none;
@@ -68,6 +73,37 @@
       transition: opacity 0.2s;
     }
     #navbar a:hover { opacity: 1; }
+
+    .zoom-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .zoom-controls button {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 4px;
+      color: #cdd6f4;
+      font-family: inherit;
+      font-size: 14px;
+      width: 28px;
+      height: 24px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s;
+    }
+    .zoom-controls button:hover { background: rgba(255,255,255,0.15); }
+    .zoom-controls button:active { background: rgba(100,181,246,0.3); }
+
+    #zoom-level {
+      font-size: 10px;
+      color: rgba(255,255,255,0.5);
+      min-width: 32px;
+      text-align: center;
+    }
 
     /* Background layer */
     #bg-layer { display: none; }
@@ -101,9 +137,8 @@
       border: 1px solid rgba(100, 181, 246, 0.3);
       border-radius: 8px;
       padding: 16px;
-      min-width: 500px;
-      max-width: 700px;
-      max-height: 70vh;
+      width: 700px;
+      height: 65vh;
       font-family: 'JetBrains Mono', 'Fira Code', monospace;
       font-size: 11px;
       color: #cdd6f4;
@@ -137,8 +172,60 @@
       white-space: pre-wrap;
       word-break: break-all;
       line-height: 1.4;
-      max-height: calc(70vh - 80px);
+      height: calc(65vh - 80px);
       overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(100,181,246,0.3) transparent;
+    }
+    .agent-popup .terminal::-webkit-scrollbar { width: 6px; }
+    .agent-popup .terminal::-webkit-scrollbar-track { background: transparent; }
+    .agent-popup .terminal::-webkit-scrollbar-thumb { background: rgba(100,181,246,0.3); border-radius: 3px; }
+    .agent-popup .terminal::-webkit-scrollbar-thumb:hover { background: rgba(100,181,246,0.5); }
+
+    .agent-popup .input-bar {
+      display: none;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      gap: 6px;
+      align-items: center;
+    }
+
+    .agent-popup.pinned .input-bar { display: flex; }
+
+    .agent-popup .input-bar input {
+      flex: 1;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 4px;
+      padding: 6px 10px;
+      color: #cdd6f4;
+      font-family: inherit;
+      font-size: 12px;
+      outline: none;
+    }
+    .agent-popup .input-bar input:focus {
+      border-color: rgba(100, 181, 246, 0.4);
+    }
+    .agent-popup .input-bar input::-webkit-search-cancel-button,
+    .agent-popup .input-bar input::-webkit-clear-button,
+    .agent-popup .input-bar input::-ms-clear { display: none; }
+
+    .agent-popup .input-bar button {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 4px;
+      color: #cdd6f4;
+      font-family: inherit;
+      font-size: 12px;
+      padding: 6px 12px;
+      cursor: pointer;
+    }
+    .agent-popup .input-bar button:hover { background: rgba(255,255,255,0.15); }
+
+    .agent-popup.pinned {
+      border-color: rgba(100, 181, 246, 0.5);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.6), 0 0 8px rgba(100,181,246,0.2);
     }
 
     .status-busy { background: rgba(253, 216, 53, 0.2); color: #fdd835; }
@@ -187,9 +274,15 @@
     <span class="agents-count" id="agent-count">0 agents</span>
     <div class="sep"></div>
     <a href="/office" target="_blank">React Office</a>
+    <span class="fps" id="fps">0 fps</span>
+    <div class="sep"></div>
+    <div class="zoom-controls">
+      <button id="zoom-in" title="Zoom in">+</button>
+      <span id="zoom-level">1.0x</span>
+      <button id="zoom-out" title="Zoom out">−</button>
+    </div>
     <div class="controls">
       <span><kbd>WASD</kbd> move</span>
-      <span><kbd>Ctrl</kbd>+scroll zoom</span>
       <span><kbd>Space</kbd>+drag pan</span>
     </div>
   </nav>
@@ -204,12 +297,20 @@
         <span class="status" id="popup-status"></span>
       </div>
       <div class="terminal" id="popup-terminal"></div>
+      <div class="input-bar" id="popup-input-bar">
+        <input type="text" id="popup-input" placeholder="Type command..."
+          inputmode="text" enterkeyhint="send" autocomplete="off"
+          style="-webkit-appearance:none"
+        />
+        <button id="popup-send">Send</button>
+        <button id="popup-close">✕</button>
+      </div>
     </div>
   </div>
 
-  <script type="module" src="./bridge.js"></script>
+  <script type="module" src="/office-8bit/bridge.js"></script>
   <script type="module">
-    import init from './office-8bit.js';
+    import init from '/office-8bit/office-8bit.js';
 
     async function start() {
       try {
@@ -228,6 +329,14 @@
 
     window.addEventListener('keydown', (e) => {
       if (e.code === 'Space') e.preventDefault();
+    });
+
+    // Zoom buttons
+    document.getElementById('zoom-in').addEventListener('click', () => {
+      if (window.__oracle_zoom) window.__oracle_zoom(-1); // zoom in = smaller scale
+    });
+    document.getElementById('zoom-out').addEventListener('click', () => {
+      if (window.__oracle_zoom) window.__oracle_zoom(1); // zoom out = larger scale
     });
 
     start();

@@ -133,10 +133,38 @@ const popupName = document.getElementById('popup-name');
 const popupStatus = document.getElementById('popup-status');
 const popupTerminal = document.getElementById('popup-terminal');
 
+let _pinnedTarget = null;
+let _captureInterval = null;
+let _showTime = 0;
+let _hideRequested = false;
+
 window.__oracle_show_popup = function(target, x, y) {
+  if (_pinnedTarget) return;
+
   const capture = captures[target];
   if (!capture) return;
 
+  _hideRequested = false;
+  _showTime = Date.now();
+  _showPopup(target, capture);
+};
+
+window.__oracle_hide_popup = function() {
+  if (_pinnedTarget) return;
+  _hideRequested = true;
+};
+
+// Check every 100ms if a deferred hide should execute (after anti-blink window)
+setInterval(() => {
+  if (!_hideRequested || _pinnedTarget) return;
+  if (popup.style.display === 'none') return;
+  if (Date.now() - _showTime >= 800) {
+    popup.style.display = 'none';
+    _hideRequested = false;
+  }
+}, 100);
+
+function _showPopup(target, capture) {
   const parts = target.split(':');
   const session = sessions.find(s => s.name === parts[0]);
   const winIdx = parseInt(parts[1]);
@@ -148,16 +176,82 @@ window.__oracle_show_popup = function(target, x, y) {
   popupStatus.textContent = status;
   popupStatus.className = `status status-${status}`;
   popupTerminal.innerHTML = ansiToHtml(capture.content || '');
+  popupTerminal.scrollTop = popupTerminal.scrollHeight;
 
+  popup.dataset.target = target;
   popup.style.display = 'block';
   popup.style.left = '50%';
   popup.style.top = '50%';
   popup.style.transform = 'translate(-50%, -50%)';
-};
+}
 
-window.__oracle_hide_popup = function() {
+// Click popup to pin it
+popup.addEventListener('click', (e) => {
+  if (e.target.id === 'popup-close' || e.target.id === 'popup-send' || e.target.id === 'popup-input') return;
+  const target = popup.dataset.target;
+  if (!target || _pinnedTarget) return;
+
+  _pinnedTarget = target;
+  popup.classList.add('pinned');
+  document.getElementById('popup-input').focus();
+
+  // Realtime refresh pinned capture every 50ms
+  _captureInterval = setInterval(() => {
+    const cap = captures[_pinnedTarget];
+    if (cap) {
+      const wasAtBottom = popupTerminal.scrollHeight - popupTerminal.scrollTop - popupTerminal.clientHeight < 50;
+      popupTerminal.innerHTML = ansiToHtml(cap.content || '');
+      popupStatus.textContent = detectStatus(cap.content);
+      popupStatus.className = `status status-${detectStatus(cap.content)}`;
+      if (wasAtBottom) popupTerminal.scrollTop = popupTerminal.scrollHeight;
+    }
+  }, 50);
+});
+
+// Close button unpins
+document.getElementById('popup-close').addEventListener('click', (e) => {
+  e.stopPropagation();
+  _pinnedTarget = null;
+  popup.classList.remove('pinned');
   popup.style.display = 'none';
-};
+  if (_captureInterval) { clearInterval(_captureInterval); _captureInterval = null; }
+});
+
+// Esc to close popup (pinned or unpinned)
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && popup.style.display !== 'none') {
+    e.preventDefault();
+    _pinnedTarget = null;
+    popup.classList.remove('pinned');
+    popup.style.display = 'none';
+    if (_captureInterval) { clearInterval(_captureInterval); _captureInterval = null; }
+  }
+});
+
+// Send input to agent via tmux
+document.getElementById('popup-send').addEventListener('click', (e) => {
+  e.stopPropagation();
+  _sendInput();
+});
+document.getElementById('popup-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); _sendInput(); }
+  e.stopPropagation(); // prevent WASD movement while typing
+});
+
+async function _sendInput() {
+  const input = document.getElementById('popup-input');
+  const text = input.value.trim();
+  if (!text || !_pinnedTarget) return;
+  input.value = '';
+
+  try {
+    await fetch(`${API_BASE}/api/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target: _pinnedTarget, keys: text + '\n' }),
+    });
+  } catch (e) { console.warn('Send failed:', e); }
+}
 
 // --- Full ANSI → HTML (Catppuccin Mocha palette) ---
 
@@ -248,6 +342,33 @@ window.__oracle_set_bg = function(imageUrl) {
   };
   img.src = '/' + imageUrl;
 };
+
+// --- Zoom bridge ---
+
+let _zoomDelta = 0;
+window.__oracle_zoom = function(dir) { _zoomDelta = dir; };
+window.__oracle_get_zoom = function() { const d = _zoomDelta; _zoomDelta = 0; return d; };
+window.__oracle_set_zoom_level = function(level) {
+  const el = document.getElementById('zoom-level');
+  if (el) el.textContent = level.toFixed(1) + 'x';
+};
+
+// --- FPS counter ---
+
+let _fpsFrames = 0;
+let _fpsLast = performance.now();
+function _fpsLoop() {
+  _fpsFrames++;
+  const now = performance.now();
+  if (now - _fpsLast >= 1000) {
+    const el = document.getElementById('fps');
+    if (el) el.textContent = _fpsFrames + ' fps';
+    _fpsFrames = 0;
+    _fpsLast = now;
+  }
+  requestAnimationFrame(_fpsLoop);
+}
+requestAnimationFrame(_fpsLoop);
 
 // --- Init ---
 

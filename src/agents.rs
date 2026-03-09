@@ -11,6 +11,7 @@ impl Plugin for AgentsPlugin {
             .add_systems(Update, (
                 sync_agents,
                 animate_sprite_frames,
+                animate_flame_sprites,
                 animate_status_indicators,
                 agent_movement,
             ));
@@ -23,6 +24,8 @@ impl Plugin for AgentsPlugin {
 pub struct SpriteAssets {
     pub characters: Vec<Handle<Image>>,
     pub atlas_layout: Handle<TextureAtlasLayout>,
+    pub saiyan_flame: Handle<Image>,
+    pub saiyan_atlas: Handle<TextureAtlasLayout>,
 }
 
 fn load_sprite_assets(
@@ -39,9 +42,17 @@ fn load_sprite_assets(
         TextureAtlasLayout::from_grid(UVec2::new(16, 32), 7, 3, None, None)
     );
 
+    // Saiyan flame atlas: 1280×1749 sprite sheet, 8 cols × 10 rows (160×174 per frame)
+    let saiyan_flame = asset_server.load("sprites/saiyan_effect.png");
+    let saiyan_atlas = atlas_layouts.add(
+        TextureAtlasLayout::from_grid(UVec2::new(160, 174), 8, 10, None, None)
+    );
+
     commands.insert_resource(SpriteAssets {
         characters,
         atlas_layout,
+        saiyan_flame,
+        saiyan_atlas,
     });
 }
 
@@ -102,6 +113,9 @@ pub struct StatusDot;
 
 #[derive(Component)]
 pub struct SaiyanGlow;
+
+#[derive(Component)]
+pub struct SaiyanFlame;
 
 #[derive(Component)]
 pub struct AnimationState {
@@ -258,14 +272,27 @@ fn sync_agents(
                 ));
 
                 if data.status == AgentStatus::Saiyan {
-                    parent.spawn((
-                        Sprite {
-                            color: Color::srgba(1.0, 0.85, 0.0, 0.15),
-                            custom_size: Some(Vec2::new(SCALED_TILE * 1.4, SCALED_TILE * 2.4)),
-                            ..default()
+                    // Animated flame from sprite sheet — bottom row (row 9) = golden/yellow flames
+                    let flame_frames: Vec<usize> = (72..80).collect(); // row 9: indices 72-79
+                    let mut flame_sprite = Sprite::from_atlas_image(
+                        sprite_assets.saiyan_flame.clone(),
+                        TextureAtlas {
+                            layout: sprite_assets.saiyan_atlas.clone(),
+                            index: flame_frames[0],
                         },
-                        Transform::from_xyz(0.0, SCALED_TILE * 0.5, -0.5),
-                        SaiyanGlow,
+                    );
+                    flame_sprite.custom_size = Some(Vec2::new(SCALED_TILE * 1.6, SCALED_TILE * 2.8));
+                    flame_sprite.color = Color::srgba(1.0, 1.0, 1.0, 0.7);
+
+                    parent.spawn((
+                        flame_sprite,
+                        Transform::from_xyz(0.0, SCALED_TILE * 0.6, -0.5),
+                        SaiyanFlame,
+                        AnimationState {
+                            timer: Timer::from_seconds(0.08, TimerMode::Repeating),
+                            frames: flame_frames,
+                            current: 0,
+                        },
                     ));
                 }
             });
@@ -341,6 +368,21 @@ fn agent_movement(
         } else {
             transform.translation.x += step.x;
             transform.translation.y += step.y;
+        }
+    }
+}
+
+fn animate_flame_sprites(
+    time: Res<Time>,
+    mut flames: Query<(&mut AnimationState, &mut Sprite), With<SaiyanFlame>>,
+) {
+    for (mut anim, mut sprite) in flames.iter_mut() {
+        anim.timer.tick(time.delta());
+        if anim.timer.just_finished() {
+            anim.current = (anim.current + 1) % anim.frames.len();
+            if let Some(atlas) = &mut sprite.texture_atlas {
+                atlas.index = anim.frames[anim.current];
+            }
         }
     }
 }
