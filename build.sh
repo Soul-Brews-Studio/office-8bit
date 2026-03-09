@@ -1,45 +1,61 @@
 #!/bin/bash
-# Build office-8bit WASM and prepare dist
+# Build office-8bit WASM apps and prepare dist
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
-echo "=== Building office-8bit (Bevy WASM) ==="
-
-# Build WASM
 export PATH="$HOME/.cargo/bin:$PATH"
-cargo build --release --target wasm32-unknown-unknown
 
-# Run wasm-bindgen
-WASM_FILE="target/wasm32-unknown-unknown/release/office-8bit.wasm"
-OUT_DIR="dist"
+# Determine what to build
+APP="${1:-all}"
 
-mkdir -p "$OUT_DIR"
+build_app() {
+  local name="$1"
+  local out="$2"
 
-wasm-bindgen "$WASM_FILE" \
-  --out-dir "$OUT_DIR" \
-  --target web \
-  --no-typescript
+  echo "=== Building $name ==="
+  cargo build --release --target wasm32-unknown-unknown --bin "$name"
 
-# Copy web files
-cp web/index.html "$OUT_DIR/"
-cp web/bridge.js "$OUT_DIR/"
-cp web/hub.html "$OUT_DIR/"
-cp web/canvas-bridge.js "$OUT_DIR/"
+  mkdir -p "$out"
+  wasm-bindgen "target/wasm32-unknown-unknown/release/${name}.wasm" \
+    --out-dir "$out" \
+    --target web \
+    --no-typescript
 
-# Copy assets
-cp -r assets "$OUT_DIR/"
+  # Optimize
+  local wasm_file="${out}/${name}_bg.wasm"
+  if command -v wasm-opt &> /dev/null; then
+    echo "  Optimizing $name WASM..."
+    wasm-opt -Os --enable-bulk-memory --enable-mutable-globals --enable-nontrapping-float-to-int --enable-sign-ext \
+      "$wasm_file" -o "$wasm_file" 2>/dev/null || echo "  wasm-opt skipped"
+  fi
 
-# Optional: optimize with wasm-opt
-if command -v wasm-opt &> /dev/null; then
-  echo "Optimizing WASM..."
-  wasm-opt -Os --enable-bulk-memory --enable-mutable-globals --enable-nontrapping-float-to-int --enable-sign-ext \
-    "$OUT_DIR/office-8bit_bg.wasm" -o "$OUT_DIR/office-8bit_bg.wasm" 2>/dev/null || \
-    echo "  wasm-opt failed (version too old?), skipping optimization"
+  local size=$(du -sh "$wasm_file" | cut -f1)
+  echo "  $name: $size"
+}
+
+# --- Office 8-bit ---
+if [ "$APP" = "all" ] || [ "$APP" = "office" ]; then
+  build_app "office-8bit" "dist"
+  cp web/index.html dist/
+  cp web/bridge.js dist/
+  cp web/hub.html dist/
+  cp web/canvas-bridge.js dist/
+  cp -r assets dist/
 fi
 
-SIZE=$(du -sh "$OUT_DIR/office-8bit_bg.wasm" | cut -f1)
-echo "=== Build complete: $OUT_DIR ($SIZE) ==="
-echo "Files:"
-ls -la "$OUT_DIR/"
+# --- War Room ---
+if [ "$APP" = "all" ] || [ "$APP" = "war-room" ]; then
+  build_app "war-room" "dist-war-room"
+  cp web/war-room.html dist-war-room/index.html
+  cp web/bridge.js dist-war-room/
+  cp web/canvas-bridge.js dist-war-room/
+  cp -r assets dist-war-room/
+fi
+
+echo ""
+echo "=== Build complete ==="
+echo "Office:   dist/"
+echo "War Room: dist-war-room/"
+ls -la dist/*.wasm dist-war-room/*.wasm 2>/dev/null

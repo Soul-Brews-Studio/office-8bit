@@ -2,3 +2,5 @@ target/
 dist/
 *.wasm
 .tmp/
+dist/
+dist-war-room/

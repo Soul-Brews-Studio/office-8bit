@@ -3,6 +3,18 @@ name = "office-8bit"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "office_8bit"
+path = "src/lib.rs"
+
+[[bin]]
+name = "office-8bit"
+path = "src/main.rs"
+
+[[bin]]
+name = "war-room"
+path = "src/war_room.rs"
+
 [dependencies]
 bevy = { version = "0.15", default-features = false, features = [
     "bevy_asset",
