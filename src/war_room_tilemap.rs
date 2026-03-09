@@ -94,18 +94,17 @@ fn spawn_war_room(
     }
     room.desks.clear();
 
-    // Central war table (large oval of desks)
+    // Central war table (large)
     let cx = ROOM_W / 2;
     let cy = ROOM_H / 2;
-    let table_hw = 5; // half width
-    let table_hh = 2; // half height
+    let table_hw = 8; // half width — big enough for 24+ seats
+    let table_hh = 3; // half height
 
-    // Table top and bottom edges
+    // Table edges (desks)
     for col in (cx - table_hw)..=(cx + table_hw) {
-        room.tiles[cy as usize - table_hh as usize][col as usize] = TileKind::Desk;
-        room.tiles[cy as usize + table_hh as usize][col as usize] = TileKind::Desk;
+        room.tiles[(cy - table_hh) as usize][col as usize] = TileKind::Desk;
+        room.tiles[(cy + table_hh) as usize][col as usize] = TileKind::Desk;
     }
-    // Table left and right edges
     for row in (cy - table_hh)..=(cy + table_hh) {
         room.tiles[row as usize][(cx - table_hw) as usize] = TileKind::Desk;
         room.tiles[row as usize][(cx + table_hw) as usize] = TileKind::Desk;
@@ -117,37 +116,37 @@ fn spawn_war_room(
         }
     }
 
-    // Seats around the table (chairs)
-    // Top row
+    // Seats around the table — every other tile for spacing
+    // Top row seats
     for col in ((cx - table_hw)..=(cx + table_hw)).step_by(2) {
-        let seat_row = cy - table_hh - 1;
-        if seat_row > 0 {
-            room.tiles[seat_row as usize][col as usize] = TileKind::Chair;
-            room.desks.push((col, seat_row));
+        let r = cy - table_hh - 1;
+        if r > 0 {
+            room.tiles[r as usize][col as usize] = TileKind::Chair;
+            room.desks.push((col, r));
         }
     }
-    // Bottom row
-    for col in ((cx - table_hw)..=(cx + table_hw)).step_by(2) {
-        let seat_row = cy + table_hh + 1;
-        if (seat_row as usize) < ROOM_H as usize - 1 {
-            room.tiles[seat_row as usize][col as usize] = TileKind::Chair;
-            room.desks.push((col, seat_row));
+    // Bottom row seats
+    for col in ((cx - table_hw + 1)..=(cx + table_hw)).step_by(2) {
+        let r = cy + table_hh + 1;
+        if (r as usize) < ROOM_H as usize - 1 {
+            room.tiles[r as usize][col as usize] = TileKind::Chair;
+            room.desks.push((col, r));
         }
     }
-    // Left side
+    // Left side seats
     for row in ((cy - table_hh)..=(cy + table_hh)).step_by(2) {
-        let seat_col = cx - table_hw - 1;
-        if seat_col > 0 {
-            room.tiles[row as usize][seat_col as usize] = TileKind::Chair;
-            room.desks.push((seat_col, row));
+        let c = cx - table_hw - 1;
+        if c > 0 {
+            room.tiles[row as usize][c as usize] = TileKind::Chair;
+            room.desks.push((c, row));
         }
     }
-    // Right side
-    for row in ((cy - table_hh)..=(cy + table_hh)).step_by(2) {
-        let seat_col = cx + table_hw + 1;
-        if (seat_col as usize) < ROOM_W as usize - 1 {
-            room.tiles[row as usize][seat_col as usize] = TileKind::Chair;
-            room.desks.push((seat_col, row));
+    // Right side seats
+    for row in ((cy - table_hh + 1)..=(cy + table_hh)).step_by(2) {
+        let c = cx + table_hw + 1;
+        if (c as usize) < ROOM_W as usize - 1 {
+            room.tiles[row as usize][c as usize] = TileKind::Chair;
+            room.desks.push((c, row));
         }
     }
 

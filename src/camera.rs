@@ -15,9 +15,9 @@ impl Plugin for CameraPlugin {
 pub struct MainCamera;
 
 fn setup_camera(mut commands: Commands) {
-    // Start camera at top-left room area — will pan to player once spawned
-    let start_x = 10.0 * crate::tilemap::SCALED_TILE;
-    let start_y = -(8.0 * crate::tilemap::SCALED_TILE);
+    // Start camera at world center — works for both office and war room
+    let start_x = (crate::tilemap::WORLD_W as f32 / 2.0) * crate::tilemap::SCALED_TILE;
+    let start_y = -((crate::tilemap::WORLD_H as f32 / 2.0) * crate::tilemap::SCALED_TILE);
     commands.spawn((
         Camera2d::default(),
         MainCamera,

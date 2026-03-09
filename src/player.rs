@@ -84,9 +84,27 @@ fn spawn_player(
     if !office.spawned { return; }
     spawned.0 = true;
 
-    // Spawn at center crossroads
-    let start_x = (WORLD_W as f32 / 2.0) * SCALED_TILE;
-    let start_y = -((WORLD_H as f32 / 2.0) * SCALED_TILE);
+    // Spawn at center — find nearest walkable tile
+    let cx = WORLD_W / 2;
+    let cy = WORLD_H / 2;
+    let (mut sx, mut sy) = (cx, cy);
+    'search: for radius in 0..20 {
+        for dy in -radius..=radius {
+            for dx in -radius..=radius {
+                let tx = cx + dx;
+                let ty = cy + dy;
+                if tx >= 0 && ty >= 0 && tx < WORLD_W && ty < WORLD_H {
+                    if office.world[ty as usize][tx as usize].is_walkable() {
+                        sx = tx;
+                        sy = ty;
+                        break 'search;
+                    }
+                }
+            }
+        }
+    }
+    let start_x = sx as f32 * SCALED_TILE;
+    let start_y = -(sy as f32 * SCALED_TILE);
 
     let mut sprite = Sprite::from_atlas_image(
         sprite_assets.characters[0].clone(),
