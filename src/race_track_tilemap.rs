@@ -4,6 +4,8 @@ use office_8bit::tilemap::{
     SCALED_TILE, WORLD_W, WORLD_H,
 };
 use office_8bit::agents::{Agent, AgentRegistry, AgentStatus, AgentSprite};
+use office_8bit::camera::MainCamera;
+use office_8bit::player::RoomZoom;
 
 pub struct RaceTrackPlugin;
 
@@ -12,8 +14,44 @@ impl Plugin for RaceTrackPlugin {
         app.insert_resource(OfficeMap::default())
             .insert_resource(DynRoomState::default())
             .insert_resource(RaceState::default())
+            .insert_resource(RaceZoom { phase: 0, timer: Timer::from_seconds(2.0, TimerMode::Once) })
             .add_systems(Startup, (load_tile_assets, spawn_track).chain())
-            .add_systems(Update, (ensure_race_track, race_agents, update_leaderboard));
+            .add_systems(Update, (ensure_race_track, race_agents, update_leaderboard, race_zoom_animation));
+    }
+}
+
+// --- Race zoom: start close, animate out to show whole track ---
+
+#[derive(Resource)]
+struct RaceZoom {
+    phase: u8, // 0=init, 1=waiting, 2=done
+    timer: Timer,
+}
+
+fn race_zoom_animation(
+    time: Res<Time>,
+    mut state: ResMut<RaceZoom>,
+    mut room_zoom: ResMut<RoomZoom>,
+    mut camera: Query<&mut OrthographicProjection, With<MainCamera>>,
+) {
+    match state.phase {
+        0 => {
+            // First frame: snap camera to close zoom
+            if let Ok(mut proj) = camera.get_single_mut() {
+                proj.scale = 1.5;
+            }
+            room_zoom.target_scale = 1.5;
+            state.phase = 1;
+        }
+        1 => {
+            // Hold close, then zoom out to show the whole track
+            state.timer.tick(time.delta());
+            if state.timer.finished() {
+                room_zoom.target_scale = 3.5;
+                state.phase = 2;
+            }
+        }
+        _ => {} // done — normal zoom controls take over
     }
 }
 
