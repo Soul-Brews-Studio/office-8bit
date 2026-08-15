@@ -388,7 +388,7 @@
         version: 'v5',
         size: '20MB',
         builtin: true,
-        url: '/office-8bit/index.html',
+        url: './office-8bit',
         tags: ['bevy', 'pixel-art', 'agents'],
         icon: '///',
       },
@@ -399,7 +399,7 @@
         version: 'v7',
         size: '20MB',
         builtin: true,
-        url: '/war-room/index.html',
+        url: './war-room',
         tags: ['bevy', 'war-room', 'command'],
         icon: '+++',
       },
@@ -410,7 +410,7 @@
         version: 'v7',
         size: '20MB',
         builtin: true,
-        url: '/race-track/index.html',
+        url: './race-track',
         tags: ['bevy', 'racing', 'leaderboard'],
         icon: '>>>',
       },
@@ -421,7 +421,7 @@
         version: 'v7',
         size: '21MB',
         builtin: true,
-        url: '/superman/index.html',
+        url: './superman',
         tags: ['bevy', 'superman', 'space'],
         icon: '***',
       }
@@ -494,7 +494,7 @@
       grid.appendChild(upload);
     }
 
-    function launchApp(app) {
+    function launchApp(app, skipPush) {
       currentApp = app.id;
       const runner = document.getElementById('runner');
       const frame = document.getElementById('runner-frame');
@@ -506,6 +506,7 @@
         launchUserApp(app, frame);
       }
       runner.classList.add('active');
+      if (!skipPush) history.pushState({ app: app.id }, '', `./${app.id}/`);
       render();
     }
 
@@ -539,21 +540,41 @@
       frame.src = URL.createObjectURL(htmlBlob);
     }
 
-    function closeRunner() {
+    function closeRunner(skipPush) {
       const runner = document.getElementById('runner');
       const frame = document.getElementById('runner-frame');
       frame.src = 'about:blank';
       runner.classList.remove('active');
       currentApp = null;
+      if (!skipPush) history.pushState({}, '', './');
       render();
     }
 
-    document.getElementById('back-btn').addEventListener('click', closeRunner);
+    document.getElementById('back-btn').addEventListener('click', () => history.back());
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && document.getElementById('runner').classList.contains('active')) {
         closeRunner();
       }
     });
+
+    // Handle browser back/forward
+    window.addEventListener('popstate', (e) => {
+      if (e.state && e.state.app) {
+        const allApps = [...BUILTIN_APPS];
+        const app = allApps.find(a => a.id === e.state.app);
+        if (app) { launchApp(app, true); return; }
+      }
+      closeRunner(true);
+    });
+
+    // On load, check if URL has an app path
+    (function checkInitialRoute() {
+      const match = location.pathname.match(/\/(office-8bit|war-room|race-track|superman)\/?$/);
+      if (match) {
+        const app = BUILTIN_APPS.find(a => a.id === match[1]);
+        if (app) { launchApp(app, true); history.replaceState({ app: app.id }, '', `./${app.id}/`); }
+      }
+    })();
 
     document.getElementById('file-input').addEventListener('change', (e) => {
       handleFiles(e.target.files);

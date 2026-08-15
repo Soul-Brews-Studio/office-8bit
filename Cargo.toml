@@ -8,20 +8,8 @@ name = "office_8bit"
 path = "src/lib.rs"
 
 [[bin]]
-name = "office-8bit"
+name = "oracle-8bit"
 path = "src/main.rs"
-
-[[bin]]
-name = "war-room"
-path = "src/war_room.rs"
-
-[[bin]]
-name = "race-track"
-path = "src/race_track.rs"
-
-[[bin]]
-name = "superman"
-path = "src/superman.rs"
 
 [dependencies]
 bevy = { version = "0.15", default-features = false, features = [
@@ -30,13 +18,9 @@ bevy = { version = "0.15", default-features = false, features = [
     "bevy_render",
     "bevy_sprite",
     "bevy_text",
-    "bevy_ui",
     "bevy_winit",
-    "bevy_state",
-    "default_font",
     "png",
     "webgl2",
-    "x11",
 ] }
 wasm-bindgen = "0.2"
 serde = { version = "1", features = ["derive"] }
@@ -56,6 +40,7 @@ getrandom = { version = "0.3", features = ["wasm_js"] }
 opt-level = "s"
 lto = true
 strip = true
+codegen-units = 1
 
 [profile.release.package."*"]
 opt-level = "s"
